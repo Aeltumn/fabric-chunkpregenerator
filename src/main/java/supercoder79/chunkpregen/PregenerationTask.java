@@ -11,15 +11,17 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ChunkHolder;
 import net.minecraft.server.world.ChunkTaskPrioritySystem;
 import net.minecraft.server.world.ChunkTicketType;
+import net.minecraft.server.world.OptionalChunk;
 import net.minecraft.server.world.ServerChunkManager;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.server.world.ThreadedAnvilChunkStorage;
 import net.minecraft.util.Util;
 import net.minecraft.util.math.ChunkPos;
+import net.minecraft.world.chunk.AbstractChunkHolder;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.ChunkStatus;
+import net.minecraft.world.chunk.WorldChunk;
 import supercoder79.chunkpregen.iterator.CoarseOnionIterator;
-import supercoder79.chunkpregen.mixin.ThreadedAnvilChunkStorageAccessor;
+import supercoder79.chunkpregen.mixin.ServerChunkLoadingManagerAccessor;
 
 import java.util.Comparator;
 import java.util.Iterator;
@@ -134,35 +136,35 @@ public final class PregenerationTask {
         }
 
         // tick the chunk manager to force the ChunkHolders to be created
-        this.chunkManager.tick();
+        this.chunkManager.tick(() -> false, true);
 
-        ThreadedAnvilChunkStorage tacs = this.chunkManager.threadedAnvilChunkStorage;
+        var sclm = this.chunkManager.chunkLoadingManager;
 
         for (int i = 0; i < chunks.size(); i++) {
             long chunk = chunks.getLong(i);
 
-            ChunkHolder holder = tacs.getChunkHolder(chunk);
+            ChunkHolder holder = sclm.getChunkHolder(chunk);
             if (holder == null) {
                 ChunkPregen.LOGGER.warn("Added ticket for chunk but it was not added! ({}; {})", ChunkPos.getPackedX(chunk), ChunkPos.getPackedZ(chunk));
-                this.acceptChunkResult(chunk, ChunkHolder.UNLOADED_CHUNK);
+                this.acceptChunkResult(chunk, AbstractChunkHolder.UNLOADED);
                 continue;
             }
 
-            holder.getChunkAt(ChunkStatus.FULL, tacs).whenCompleteAsync((result, throwable) -> {
+            holder.load(ChunkStatus.FULL, sclm).whenCompleteAsync((result, throwable) -> {
                 if (throwable == null) {
                     this.acceptChunkResult(chunk, result);
                 } else {
                     ChunkPregen.LOGGER.warn("Encountered unexpected error while generating chunk", throwable);
-                    this.acceptChunkResult(chunk, ChunkHolder.UNLOADED_CHUNK);
+                    this.acceptChunkResult(chunk, AbstractChunkHolder.UNLOADED);
                 }
-            }, runnable -> ((ThreadedAnvilChunkStorageAccessor)tacs).getMainExecutor().send(ChunkTaskPrioritySystem.createMessage(holder, runnable)));
+            }, runnable -> ((ServerChunkLoadingManagerAccessor)sclm).getMainExecutor().send(ChunkTaskPrioritySystem.createMessage(holder, runnable)));
         }
     }
 
-    private void acceptChunkResult(long chunk, Either<Chunk, ChunkHolder.Unloaded> result) {
+    private void acceptChunkResult(long chunk, OptionalChunk<Chunk> result) {
         this.server.submit(() -> this.releaseChunk(chunk));
 
-        if (result.left().isPresent()) {
+        if (result.isPresent()) {
             this.okCount.getAndIncrement();
         } else {
             this.errorCount.getAndIncrement();

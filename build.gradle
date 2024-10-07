@@ -1,5 +1,5 @@
 plugins {
-	id 'fabric-loom' version '1.1-SNAPSHOT'
+	id 'fabric-loom' version '1.7-SNAPSHOT'
 	id 'io.github.juuxel.loom-quiltflower' version '1.7.0'
 	id 'maven-publish'
 }
@@ -51,7 +51,7 @@ tasks.withType(JavaCompile).configureEach {
 	// The Minecraft launcher currently installs Java 8 for users, so your mod probably wants to target Java 8 too
 	// JDK 9 introduced a new way of specifying this that will make sure no newer classes or methods are used.
 	// We'll use that if it's available, but otherwise we'll use the older option.
-	def targetVersion = 17
+	def targetVersion = 21
 	if (JavaVersion.current().isJava9Compatible()) {
 		it.options.release = targetVersion
 	} else {
